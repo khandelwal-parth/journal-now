@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 
-export function proxy(request) {
+export function middleware(request) {
   const token = request.cookies.get('journal_token')?.value;
   const { pathname } = request.nextUrl;
 
