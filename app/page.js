@@ -36,10 +36,11 @@ export default function JournalPage() {
     return iso.includes('T') ? dp + ' ' + dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : dp;
   }
 
-  useEffect(() => {
-    fetch('/api/entries').then(r => r.json()).then(d => setEntries(d || {})).catch(() => {});
-    fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(d => { if (d) setUser(d); }).catch(() => {});
-  }, []);
+fetch('/api/auth/me').then(r => {
+  if (!r.ok) { window.location.href = '/login'; return null; }
+  return r.json();
+}).then(d => { if (d) setUser(d); }).catch(() => { window.location.href = '/login'; });
+fetch('/api/entries').then(r => r.json()).then(d => setEntries(d || {})).catch(() => {});
 
   const saveEntry = useCallback(async (auto = false) => {
     if (!currentKey || !editorRef.current) return;
