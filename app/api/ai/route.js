@@ -55,7 +55,7 @@ ${currentEntryText ? `They are currently looking at this entry:\n${currentEntryT
 
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY is not configured' }, { status: 500 });
+    return NextResponse.json({ error: 'GEMINI_API_KEY is not configured locally or in Vercel' }, { status: 500 });
   }
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
@@ -75,7 +75,8 @@ ${currentEntryText ? `They are currently looking at this entry:\n${currentEntryT
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     console.error('Gemini API error:', errorData);
-    return NextResponse.json({ error: 'Failed to fetch response from Gemini' }, { status: response.status });
+    const detail = errorData.error?.message || 'Check Vercel logs for details';
+    return NextResponse.json({ error: `Gemini API Error: ${detail}` }, { status: response.status });
   }
 
   const data = await response.json();
