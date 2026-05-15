@@ -21,9 +21,11 @@ export default function JournalPage() {
   const [aiReply, setAiReply] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [entryTitle, setEntryTitle] = useState('');
   const aiInputRef = useRef(null);
   const editorRef = useRef(null);
   const saveTimerRef = useRef(null);
+  const titleSaveTimerRef = useRef(null);
 
   function today() {
     const d = new Date();
@@ -85,8 +87,33 @@ export default function JournalPage() {
     setEntries(prev => ({ ...prev, [currentKey]: { ...prev[currentKey], html, updated: new Date().toISOString() } }));
     setStatusState('saved');
     setStatusMsg(auto ? 'auto-saved' : 'saved ✓');
-    fetch('/api/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entry_key: currentKey, html }) });
-  }, [currentKey]);
+    fetch('/api/entries', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' }, 
+      body: JSON.stringify({ entry_key: currentKey, html, title: entryTitle }) 
+    });
+  }, [currentKey, entryTitle]);
+
+  const saveTitle = useCallback((key, title) => {
+    setEntries(prev => {
+      const updated = { ...prev, [key]: { ...prev[key], title } };
+      try { localStorage.setItem('journal_cache', JSON.stringify(updated)); } catch (e) { }
+      return updated;
+    });
+    fetch('/api/entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entry_key: key, html: editorRef.current?.innerHTML || '', title }),
+    });
+  }, []);
+
+  function handleTitleChange(e) {
+    const val = e.target.value;
+    setEntryTitle(val);
+    setEntries(prev => ({ ...prev, [currentKey]: { ...prev[currentKey], title: val } }));
+    clearTimeout(titleSaveTimerRef.current);
+    titleSaveTimerRef.current = setTimeout(() => saveTitle(currentKey, val), 800);
+  }
 
   function deleteEntryByKey(key) {
     if (!confirm('Delete this entry forever?')) return;
@@ -100,6 +127,7 @@ export default function JournalPage() {
     setView('editor');
     setStatusState('saved');
     setStatusMsg('ready');
+    setEntryTitle(entries[key]?.title || '');
     setTimeout(() => {
       if (editorRef.current) {
         editorRef.current.innerHTML = entries[key]?.html || '';
@@ -161,7 +189,7 @@ export default function JournalPage() {
         body: JSON.stringify({ 
           question: q, 
           currentEntryKey: currentKey,
-          currentContent: journalHtml 
+          currentContent: editorRef.current?.innerHTML || '' 
         }),
       });
       const data = await res.json();
@@ -345,7 +373,15 @@ export default function JournalPage() {
                 <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: '#7c5c3a', fontWeight: 500 }}>{fmtShort(k)}</div>
                 {k.startsWith(today()) && <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 9, background: '#e8c88a', color: '#7c5c3a', padding: '2px 6px', borderRadius: 3 }}>today</span>}
               </div>
-              <div style={{ fontSize: 12, color: '#7a6a58', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stripHtml(entries[k]?.html || '').slice(0, 65) || '(empty)'}</div>
+              {/* NEW: show title prominently if it exists, otherwise fall back to content preview */}
+              {entries[k]?.title ? (
+                <div style={{ fontSize: 13, color: '#3a2e24', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2, fontFamily: "'Instrument Sans',sans-serif" }}>
+                  {entries[k].title}
+                </div>
+              ) : null}
+              <div style={{ fontSize: 12, color: '#7a6a58', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {stripHtml(entries[k]?.html || '').slice(0, 65) || '(empty)'}
+              </div>
               <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, color: '#b8a490', marginTop: 5 }}>{wc(entries[k]?.html || '')} words{entries[k]?.updated ? ' · ' + new Date(entries[k].updated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}</div>
             </div>
           ))}
@@ -372,12 +408,39 @@ export default function JournalPage() {
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 28px 12px', borderBottom: '1px solid #e8e0d4', background: '#faf7f2', minHeight: 58 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ fontFamily: "'Lora',serif", fontSize: 18, fontStyle: 'italic', color: '#7c5c3a' }}>{currentKey ? fmtLong(currentKey) : '—'}</div>
-                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, background: '#f2ede4', color: '#c49a5a', padding: '3px 9px', borderRadius: 4, border: '1px solid #e8e0d4' }}>{isToday ? 'today' : 'past entry'}</span>
+            {/* TOP BAR — date on left, NEW title input in center, action buttons on right */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 28px 12px', borderBottom: '1px solid #e8e0d4', background: '#faf7f2', minHeight: 58, gap: 16 }}>
+              {/* Left: date + today badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                <div style={{ fontFamily: "'Lora',serif", fontSize: 16, fontStyle: 'italic', color: '#7c5c3a', whiteSpace: 'nowrap' }}>{currentKey ? fmtLong(currentKey) : '—'}</div>
+                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 10, background: '#f2ede4', color: '#c49a5a', padding: '3px 9px', borderRadius: 4, border: '1px solid #e8e0d4', whiteSpace: 'nowrap' }}>{isToday ? 'today' : 'past entry'}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+
+              {/* Center: NEW title input */}
+              <input
+                id="entry-title-input"
+                value={entryTitle}
+                onChange={handleTitleChange}
+                placeholder="name this entry…"
+                maxLength={80}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: '7px 14px',
+                  background: '#f2ede4',
+                  border: '1px solid #e8e0d4',
+                  borderRadius: 7,
+                  fontFamily: "'Instrument Sans',sans-serif",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  color: '#1a1410',
+                  outline: 'none',
+                  transition: 'border-color 0.15s, background 0.15s',
+                }}
+              />
+
+              {/* Right: action buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 <button onClick={() => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.onchange = e => Array.from(e.target.files).forEach(f => { const r = new FileReader(); r.onload = ev => { const img = document.createElement('img'); img.src = ev.target.result; img.style.cssText = 'max-width:100%;border-radius:10px;margin:16px 0;display:block'; editorRef.current?.appendChild(img); }; r.readAsDataURL(f); }); inp.click(); }} style={S.topBtn}>📷 image</button>
                 <button onClick={exportEntry} style={S.topBtn}>↓ export</button>
                 {!isToday && <button onClick={() => deleteEntryByKey(currentKey)} style={{ padding: '7px 14px', background: '#fef0ef', color: '#c0392b', border: '1px solid #f5c0bc', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: "'Instrument Sans',sans-serif" }}>🗑 delete</button>}
