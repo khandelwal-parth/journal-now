@@ -58,7 +58,7 @@ ${currentEntryText ? `They are currently looking at this entry:\n${currentEntryT
     return NextResponse.json({ error: 'GEMINI_API_KEY is not configured locally or in Vercel' }, { status: 500 });
   }
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
