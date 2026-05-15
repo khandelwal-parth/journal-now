@@ -58,7 +58,7 @@ ${currentEntryText ? `They are currently looking at this entry:\n${currentEntryT
     return NextResponse.json({ error: 'GEMINI_API_KEY is not configured' }, { status: 500 });
   }
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -79,6 +79,19 @@ ${currentEntryText ? `They are currently looking at this entry:\n${currentEntryT
   }
 
   const data = await response.json();
-  const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Something went wrong, try again.';
+  console.log('Gemini API Response:', JSON.stringify(data, null, 2));
+
+  if (!data.candidates || data.candidates.length === 0) {
+    const reason = data.promptFeedback?.blockReason || 'unknown reason';
+    return NextResponse.json({ reply: `I'm sorry, I couldn't generate a response. (Reason: ${reason})` });
+  }
+
+  const reply = data.candidates[0]?.content?.parts?.[0]?.text;
+  
+  if (!reply) {
+    const finishReason = data.candidates[0]?.finishReason || 'unknown';
+    return NextResponse.json({ reply: `I'm sorry, I couldn't generate a response. (Finish Reason: ${finishReason})` });
+  }
+
   return NextResponse.json({ reply });
 }

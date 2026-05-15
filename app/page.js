@@ -161,8 +161,12 @@ export default function JournalPage() {
         body: JSON.stringify({ question: q, currentEntryKey: currentKey }),
       });
       const data = await res.json();
-      setAiReply(data.reply || 'no response');
-    } catch {
+      if (data.error) {
+        setAiReply('Error: ' + data.error);
+      } else {
+        setAiReply(data.reply || 'no response');
+      }
+    } catch (err) {
       setAiReply('something went wrong, try again.');
     } finally {
       setAiLoading(false);
