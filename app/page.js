@@ -158,7 +158,11 @@ export default function JournalPage() {
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, currentEntryKey: currentKey }),
+        body: JSON.stringify({ 
+          question: q, 
+          currentEntryKey: currentKey,
+          currentContent: journalHtml 
+        }),
       });
       const data = await res.json();
       if (data.error) {

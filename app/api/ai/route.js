@@ -11,7 +11,7 @@ export async function POST(req) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { question, currentEntryKey } = await req.json();
+  const { question, currentEntryKey, currentContent } = await req.json();
   if (!question) return NextResponse.json({ error: 'question required' }, { status: 400 });
 
   const entries = await sql`
@@ -30,9 +30,9 @@ export async function POST(req) {
     .filter(Boolean)
     .join('\n\n---\n\n');
 
-  const currentEntryText = currentEntryKey
-    ? stripHtml(entries.find(e => e.entry_key === currentEntryKey)?.html || '')
-    : null;
+  const currentEntryText = currentContent 
+    ? stripHtml(currentContent)
+    : (currentEntryKey ? stripHtml(entries.find(e => e.entry_key === currentEntryKey)?.html || '') : null);
 
   const systemPrompt = `You are a warm, emotionally intelligent journaling companion for ${user.name}.
 Tone: Warm, human, 2-4 sentences max.
