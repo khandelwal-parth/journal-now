@@ -48,7 +48,7 @@ ${currentEntryText ? `Current Entry:\n${currentEntryText}` : ''}`;
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     // Use 1.5-flash which is the fastest and usually the default
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const result = await model.generateContent(`${systemPrompt}\n\nQuestion: ${question}`);
     const response = await result.response;
