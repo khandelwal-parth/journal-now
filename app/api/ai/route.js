@@ -13,7 +13,6 @@ export async function POST(req) {
   const { question, currentEntryKey } = await req.json();
   if (!question) return NextResponse.json({ error: 'question required' }, { status: 400 });
 
-  // Fetch all entries for context
   const entries = await sql`
     SELECT entry_key, html, updated_at
     FROM entries
@@ -22,12 +21,10 @@ export async function POST(req) {
     LIMIT 30
   `;
 
-  // Build readable journal context
   const journalContext = entries
     .map(e => {
       const text = stripHtml(e.html);
-      if (!text) return null;
-      return `[${e.entry_key}]\n${text}`;
+      return text ? `[${e.entry_key}]\n${text}` : null;
     })
     .filter(Boolean)
     .join('\n\n---\n\n');
@@ -36,63 +33,51 @@ export async function POST(req) {
     ? stripHtml(entries.find(e => e.entry_key === currentEntryKey)?.html || '')
     : null;
 
-  const systemPrompt = `You are a warm, emotionally intelligent journaling companion for ${user.name}. You have read access to their private journal entries and your job is to help them reflect, understand themselves, and feel heard.
+  const systemPrompt = `You are a warm, emotionally intelligent journaling companion for ${user.name}. 
+  
+Tone: Warm, gentle, human. 2-4 sentences max. No lists.
 
-Tone rules:
-- Be warm, gentle, and human — never clinical or robotic
-- Be concise but meaningful — 2–4 sentences usually, never a wall of text
-- Never bullet points or lists — always flowing, conversational prose
-- If they ask about their writing/mood/patterns, reference specific entries naturally
-- If they ask something general (advice, a question about life), answer warmly but optionally tie it back to what we've written
-- Never say "based on your journal entries" — just speak as if you know them naturally
-- Use "you" not "one" — keep it personal
-
-${journalContext
-  ? `Here are ${user.name}'s journal entries (most recent first):\n\n${journalContext}`
-  : `${user.name} hasn't written any journal entries yet.`}
-
-${currentEntryText ? `They are currently looking at this entry:\n${currentEntryText}` : ''}`;
+${journalContext ? `Journal Context:\n${journalContext}` : 'No entries yet.'}
+${currentEntryText ? `Current Entry:\n${currentEntryText}` : ''}`;
 
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
   if (!GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY is not configured locally or in Vercel' }, { status: 500 });
+    return NextResponse.json({ error: 'GEMINI_API_KEY is missing in Vercel' }, { status: 500 });
   }
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{ text: `${systemPrompt}\n\nUser Question: ${question}` }]
-      }],
-      generationConfig: {
-        maxOutputTokens: 300,
-        temperature: 0.7,
+  // List of model IDs to try in order of preference
+  const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY 
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${systemPrompt}\n\nQuestion: ${question}` }] }],
+          generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (reply) return NextResponse.json({ reply });
+      } else {
+        const err = await response.json().catch(() => ({}));
+        lastError = err.error?.message || response.statusText;
+        console.warn(`Model ${model} failed:`, lastError);
+        // Continue to next model
       }
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    console.error('Gemini API error:', errorData);
-    const detail = errorData.error?.message || 'Check Vercel logs for details';
-    return NextResponse.json({ error: `Gemini API Error: ${detail}` }, { status: response.status });
+    } catch (err) {
+      lastError = err.message;
+      console.error(`Fetch error for ${model}:`, err);
+    }
   }
 
-  const data = await response.json();
-  console.log('Gemini API Response:', JSON.stringify(data, null, 2));
-
-  if (!data.candidates || data.candidates.length === 0) {
-    const reason = data.promptFeedback?.blockReason || 'unknown reason';
-    return NextResponse.json({ reply: `I'm sorry, I couldn't generate a response. (Reason: ${reason})` });
-  }
-
-  const reply = data.candidates[0]?.content?.parts?.[0]?.text;
-  
-  if (!reply) {
-    const finishReason = data.candidates[0]?.finishReason || 'unknown';
-    return NextResponse.json({ reply: `I'm sorry, I couldn't generate a response. (Finish Reason: ${finishReason})` });
-  }
-
-  return NextResponse.json({ reply });
+  return NextResponse.json({ error: `Gemini failed after trying multiple models. Last error: ${lastError}` }, { status: 500 });
 }
