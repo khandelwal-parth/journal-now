@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import sql from '@/lib/db';
 import { getUser } from '@/lib/auth';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 function stripHtml(h) {
   return (h || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
@@ -33,51 +34,32 @@ export async function POST(req) {
     ? stripHtml(entries.find(e => e.entry_key === currentEntryKey)?.html || '')
     : null;
 
-  const systemPrompt = `You are a warm, emotionally intelligent journaling companion for ${user.name}. 
-  
-Tone: Warm, gentle, human. 2-4 sentences max. No lists.
+  const systemPrompt = `You are a warm, emotionally intelligent journaling companion for ${user.name}.
+Tone: Warm, human, 2-4 sentences max.
 
 ${journalContext ? `Journal Context:\n${journalContext}` : 'No entries yet.'}
 ${currentEntryText ? `Current Entry:\n${currentEntryText}` : ''}`;
 
-  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-  if (!GEMINI_API_KEY) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY is missing in Vercel' }, { status: 500 });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: 'GEMINI_API_KEY is missing' }, { status: 500 });
   }
 
-  // List of model IDs to try in order of preference
-  const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
-  let lastError = null;
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    // Use 1.5-flash which is the fastest and usually the default
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  for (const model of modelsToTry) {
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_API_KEY 
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${systemPrompt}\n\nQuestion: ${question}` }] }],
-          generationConfig: { maxOutputTokens: 300, temperature: 0.7 }
-        }),
-      });
+    const result = await model.generateContent(`${systemPrompt}\n\nQuestion: ${question}`);
+    const response = await result.response;
+    const reply = response.text();
 
-      if (response.ok) {
-        const data = await response.json();
-        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (reply) return NextResponse.json({ reply });
-      } else {
-        const err = await response.json().catch(() => ({}));
-        lastError = err.error?.message || response.statusText;
-        console.warn(`Model ${model} failed:`, lastError);
-        // Continue to next model
-      }
-    } catch (err) {
-      lastError = err.message;
-      console.error(`Fetch error for ${model}:`, err);
-    }
+    return NextResponse.json({ reply });
+  } catch (err) {
+    console.error('Gemini SDK error:', err);
+    return NextResponse.json({ 
+      error: `Gemini SDK Error: ${err.message || 'Unknown error'}`,
+      suggestion: "If this says 'model not found', your API key might only have access to 'gemini-pro'."
+    }, { status: 500 });
   }
-
-  return NextResponse.json({ error: `Gemini failed after trying multiple models. Last error: ${lastError}` }, { status: 500 });
 }
