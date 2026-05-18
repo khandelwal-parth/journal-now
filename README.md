@@ -1,6 +1,6 @@
 # 📔 journal-now.
 
-> a quiet space to write freely — one day at a time. <
+> a quiet space to write freely — one day at a time.
 
 A full stack personal journal with real accounts, real database, and real privacy. Your entries are yours — tied to your account, stored securely, accessible from any device, anywhere.
 
